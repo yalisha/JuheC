@@ -1,0 +1,36 @@
+{
+  "crawler": {
+    "data_dir": "data",
+    "log_dir": "logs",
+    "api_base_url": "https://api.pearktrue.cn/api/dailyhot/",
+    "platforms": [
+      "哔哩哔哩",
+      "抖音",
+      "微博",
+      "知乎",
+      "百度",
+      "少数派",
+      "IT之家",
+      "澎湃新闻",
+      "今日头条",
+      "36氪",
+      "稀土掘金",
+      "腾讯新闻",
+      "网易新闻",
+      "英雄联盟",
+      "原神",
+      "微信读书",
+      "贴吧"
+    ]
+  },
+  "scheduler": {
+    "interval_hours": 1,
+    "run_on_startup": true,
+    "save_history": true
+  },
+  "request": {
+    "timeout": 10,
+    "retry": 3,
+    "delay_between_requests": 1
+  }
+}
