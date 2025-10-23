@@ -308,3 +308,234 @@ VACUUM;
 ---
 
 **现在可以开始长期运行，积累宝贵的时序数据！** 🚀
+
+## 📝 Phase 1.1 更新 - 外部API配额管理 (2025-10-23)
+
+### 免费API配额限制 ⚠️
+
+您的外部API为免费层级，每个API每月有调用次数限制：
+
+| API服务 | 月度配额 | 每日策略 | 月度消耗 |
+|---------|----------|----------|----------|
+| Twitter Trends By Location | 100次/月 | 1次/天 | 30次/月 ✅ |
+| ReddAPI | 50次/月 | 1次/天 | 30次/月 ✅ |
+| Social Media Master (YouTube) | 70次/月 | 1次/天 | 30次/月 ✅ |
+
+**调用策略**：每天最多调用1次，确保一个月不超过最低配额(50次)，留有20次余量用于调试和测试。
+
+### 外部API独立调度器 🕐
+
+为了避免超出免费配额，创建了独立的外部API调度器：
+
+#### 文件：`external_scheduler.py`
+
+**核心功能**：
+- ✅ 每天自动调用1次（默认凌晨2点）
+- ✅ 自动检测当天是否已调用（防止重复调用）
+- ✅ 月度调用次数统计
+- ✅ 状态文件记录（`data/external_api_status.json`）
+- ✅ 数据保存到独立文件（`data/external_YYYYMMDD_HHMMSS.json`）
+
+#### 使用方法：
+
+**1. 测试模式（只执行一次）**
+```bash
+python3 external_scheduler.py --once
+```
+
+**2. 定时运行（默认凌晨2点）**
+```bash
+python3 external_scheduler.py
+```
+
+**3. 自定义执行时间**
+```bash
+# 每天凌晨3点执行
+python3 external_scheduler.py --hour 3
+
+# 每天中午12点执行
+python3 external_scheduler.py --hour 12
+```
+
+**4. 后台运行（推荐）**
+```bash
+# 使用nohup
+nohup python3 external_scheduler.py > logs/external_api.log 2>&1 &
+
+# 或使用screen
+screen -S external_api
+python3 external_scheduler.py
+# 按 Ctrl+A 然后 D 分离
+```
+
+#### 系统集成：
+
+**方法1：独立运行**（推荐）
+```bash
+# 主爬虫：每30分钟运行一次（中文平台）
+python3 scheduler.py --interval 30
+
+# 外部API：每天运行一次（外国平台）
+python3 external_scheduler.py --hour 2
+```
+
+**方法2：systemd服务**（Ubuntu服务器）
+
+创建 `/etc/systemd/system/hotsearch-external.service`:
+
+```ini
+[Unit]
+Description=External API Scheduler (Daily)
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/热点爬取
+ExecStart=/usr/bin/python3 external_scheduler.py --hour 2
+Restart=always
+RestartSec=3600
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+```bash
+sudo systemctl enable hotsearch-external
+sudo systemctl start hotsearch-external
+sudo systemctl status hotsearch-external
+```
+
+### 外部API数据格式修复 ✅
+
+#### Twitter API - 已修复 ✅
+
+**问题**：原来的数据解析路径不正确，导致返回空数组  
+**修复**：更新解析路径为 `result['trending']['trends']`  
+**测试结果**：✅ 成功获取40条Twitter趋势数据
+
+**数据格式**：
+```json
+{
+  "platform": "Twitter",
+  "location": "United States",
+  "location_type": "Country",
+  "timestamp": "2025-10-23T20:40:31",
+  "data": [
+    {
+      "id": "#oufc",
+      "title": "#oufc",
+      "desc": "Rank 1",
+      "url": "https://twitter.com/search?q=%22%23oufc%22",
+      "hot": 0,
+      "rank": 1,
+      "domain": "",
+      "timestamp": 1729708831000
+    },
+    {
+      "id": "Hillary",
+      "title": "Hillary",
+      "desc": "Rank 3 | Politics",
+      "url": "https://twitter.com/search?q=%22Hillary%22",
+      "hot": 68400,
+      "rank": 3,
+      "domain": "Politics",
+      "timestamp": 1729708831000
+    }
+  ]
+}
+```
+
+#### Reddit API - 待修复 ⏸️
+
+**状态**：API端点不存在，需要在RapidAPI控制台查看正确端点  
+**错误信息**：`Endpoint '/hot' does not exist`  
+**解决方案**：登录 RapidAPI → 查看 ReddAPI 文档 → 更新正确端点
+
+#### YouTube API - 待修复 ⏸️
+
+**状态**：API端点不存在，需要在RapidAPI控制台查看正确端点  
+**错误信息**：`Endpoint '/trending' does not exist`  
+**解决方案**：登录 RapidAPI → 查看 Social Media Master 文档 → 更新正确端点
+
+### 配额监控和保护 📊
+
+#### 状态文件：`data/external_api_status.json`
+
+```json
+{
+  "last_crawl_time": "2025-10-23T20:40:31",
+  "total_calls_this_month": 1
+}
+```
+
+**保护机制**：
+- ✅ 每日限制检查（同一天只允许调用1次）
+- ✅ 月度统计（自动重置到下个月）
+- ✅ 状态持久化（程序重启不影响限制）
+- ✅ 日志记录（所有调用都有日志可查）
+
+**预期月度消耗**：
+- 正常运行：30次/月（每月30天）
+- 余量保留：20次（用于调试和补漏）
+- 安全余量：67%（20/30）
+
+### 数据采集计划 📈
+
+#### 中文平台（现有系统）
+- **频率**：每30分钟1次
+- **平台数**：16个（哔哩哔哩、微博、知乎、抖音等）
+- **日数据量**：48次 × 16平台 × 50条/平台 ≈ 38,400条/天
+- **存储方式**：SQLite数据库 + JSON文件
+
+#### 外国平台（新增系统）
+- **频率**：每天1次
+- **平台数**：1个（Twitter，Reddit/YouTube待修复）
+- **日数据量**：1次 × 1平台 × 40条/平台 = 40条/天
+- **存储方式**：JSON文件
+
+#### 总数据量预估
+
+| 时间周期 | 中文平台 | 外国平台 | 总计 |
+|---------|---------|---------|------|
+| 1天 | 38,400条 | 40条 | 38,440条 |
+| 1周 | 268,800条 | 280条 | 269,080条 |
+| 1月 | 1,152,000条 | 1,200条 | 1,153,200条 |
+| 3月 | 3,456,000条 | 3,600条 | 3,459,600条 |
+
+**存储容量预估**：
+- SQLite数据库：~150MB/月
+- JSON文件：~800MB/月
+- 总计：~950MB/月
+
+### 学术研究价值 🎓
+
+#### 1. 时间序列预测
+- **中文平台**：30分钟粒度，高频时序数据，适合短期预测模型
+- **外国平台**：日粒度，长期趋势数据，适合趋势分析
+
+#### 2. 算法治理
+- **跨平台对比**：中外平台推荐算法行为差异分析
+- **热点生命周期**：从出现到消失的完整轨迹追踪
+
+#### 3. 舆情分析
+- **话题传播**：热点在不同平台间的传播路径
+- **情感演化**：结合后续情感分析的时序变化
+
+#### 4. 跨文化研究
+- **热点差异**：中文社交平台 vs 英文社交平台的关注点差异
+- **传播速度**：不同文化背景下热点的传播速度对比
+
+### 后续优化建议 🔮
+
+1. **Reddit/YouTube API修复** - 需要查看RapidAPI文档更新正确端点
+2. **数据库优化** - 添加索引、分区表提升查询性能
+3. **数据清洗** - 去重、标准化、质量控制
+4. **可视化看板** - 实时热点趋势可视化
+5. **情感分析** - Phase 2：集成情感分析模型
+
+---
+
+**更新时间**：2025-10-23  
+**版本**：Phase 1.1 - 配额管理与调度优化
