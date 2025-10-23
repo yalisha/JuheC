@@ -19,14 +19,14 @@ from crawler import HotSearchCrawler
 class CrawlerScheduler:
     """爬虫定时调度器"""
 
-    def __init__(self, interval_hours: int = 1):
+    def __init__(self, interval_minutes: int = 30):
         """
         初始化调度器
 
         Args:
-            interval_hours: 运行间隔（小时）
+            interval_minutes: 运行间隔（分钟）
         """
-        self.interval_hours = interval_hours
+        self.interval_minutes = interval_minutes
         self.crawler = HotSearchCrawler()
         self.is_running = True
         self.logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class CrawlerScheduler:
         """启动调度器"""
         self.logger.info("=" * 80)
         self.logger.info(f"爬虫调度器启动成功")
-        self.logger.info(f"运行间隔: 每 {self.interval_hours} 小时")
+        self.logger.info(f"运行间隔: 每 {self.interval_minutes} 分钟")
         self.logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self.logger.info("=" * 80)
 
@@ -62,7 +62,7 @@ class CrawlerScheduler:
         self.job()
 
         # 设置定时任务
-        schedule.every(self.interval_hours).hours.do(self.job)
+        schedule.every(self.interval_minutes).minutes.do(self.job)
 
         # 主循环
         self.logger.info(f"\n等待下次执行...")
@@ -87,8 +87,8 @@ def main():
     parser.add_argument(
         '--interval',
         type=int,
-        default=1,
-        help='运行间隔（小时），默认为1小时'
+        default=30,
+        help='运行间隔（分钟），默认为30分钟'
     )
     parser.add_argument(
         '--once',
@@ -104,7 +104,7 @@ def main():
         crawler.run_once()
     else:
         # 定时运行模式
-        scheduler = CrawlerScheduler(interval_hours=args.interval)
+        scheduler = CrawlerScheduler(interval_minutes=args.interval)
         scheduler.run()
 
 

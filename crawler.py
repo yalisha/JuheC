@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import logging
 
+from database import HotSearchDatabase
+from external_apis import ExternalAPICrawler
+
 
 class HotSearchCrawler:
     """07173热搜爬虫核心类"""
@@ -41,16 +44,20 @@ class HotSearchCrawler:
         "贴吧",
     ]
 
-    def __init__(self, data_dir: str = "data", log_dir: str = "logs"):
+    def __init__(self, data_dir: str = "data", log_dir: str = "logs", use_database: bool = True, use_external_apis: bool = True):
         """
         初始化爬虫
 
         Args:
             data_dir: 数据存储目录
             log_dir: 日志存储目录
+            use_database: 是否使用数据库存储（默认True）
+            use_external_apis: 是否采集外部API数据（Twitter、Reddit等）
         """
         self.data_dir = Path(data_dir)
         self.log_dir = Path(log_dir)
+        self.use_database = use_database
+        self.use_external_apis = use_external_apis
 
         # 创建必要的目录
         self.data_dir.mkdir(exist_ok=True)
@@ -58,6 +65,21 @@ class HotSearchCrawler:
 
         # 配置日志
         self._setup_logging()
+
+        # 初始化数据库
+        if self.use_database:
+            db_path = self.data_dir / "hotsearch.db"
+            self.db = HotSearchDatabase(str(db_path))
+            self.logger.info("数据库已初始化")
+        else:
+            self.db = None
+
+        # 初始化外部API爬虫
+        if self.use_external_apis:
+            self.external_crawler = ExternalAPICrawler()
+            self.logger.info("外部API爬虫已初始化")
+        else:
+            self.external_crawler = None
 
         # 请求会话
         self.session = requests.Session()
@@ -148,10 +170,39 @@ class HotSearchCrawler:
             data = self.fetch_platform_data(platform)
             if data:
                 results['platforms'][platform] = data
+
+                # 保存到数据库
+                if self.use_database and self.db:
+                    try:
+                        inserted = self.db.insert_hotsearch_batch(platform, data['data'])
+                        self.logger.info(f"【{platform}】已保存到数据库，{inserted}条记录")
+                    except Exception as e:
+                        self.logger.error(f"【{platform}】保存数据库失败: {e}")
+
             time.sleep(1)  # 避免请求过快
 
+        # 采集外部API数据（Twitter、Reddit等）
+        if self.use_external_apis and self.external_crawler:
+            try:
+                self.logger.info("开始采集外部API数据...")
+                external_data = self.external_crawler.fetch_all_external()
+
+                for ext_platform, ext_data in external_data['platforms'].items():
+                    results['platforms'][ext_platform] = ext_data
+
+                    # 保存到数据库
+                    if self.use_database and self.db:
+                        try:
+                            inserted = self.db.insert_hotsearch_batch(ext_platform, ext_data['data'])
+                            self.logger.info(f"【{ext_platform}】已保存到数据库，{inserted}条记录")
+                        except Exception as e:
+                            self.logger.error(f"【{ext_platform}】保存数据库失败: {e}")
+
+            except Exception as e:
+                self.logger.error(f"采集外部API失败: {e}")
+
         elapsed = time.time() - start_time
-        self.logger.info(f"爬取完成，耗时 {elapsed:.2f} 秒，成功 {len(results['platforms'])}/{len(platforms)} 个平台")
+        self.logger.info(f"爬取完成，耗时 {elapsed:.2f} 秒，成功 {len(results['platforms'])}/{len(platforms) + (2 if self.use_external_apis else 0)} 个平台")
 
         return results
 
