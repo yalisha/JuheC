@@ -99,16 +99,13 @@ class ExternalAPICrawler:
             if 'conn' in locals():
                 conn.close()
 
-    def fetch_reddit_hot(self, subreddit: str = "popular", limit: int = 50) -> Optional[Dict]:
+    def fetch_reddit_hot(self, subreddit: str = "all", limit: int = 50) -> Optional[Dict]:
         """
         获取Reddit热门帖子
 
-        注意：需要先在RapidAPI控制台查看ReddAPI的正确端点
-        当前端点可能不正确，需要根据API文档调整
-
         Args:
-            subreddit: 子版块名称（默认popular）
-            limit: 获取数量
+            subreddit: 子版块名称（默认all，可选：askreddit, worldnews, funny等）
+            limit: 获取数量（最大50）
 
         Returns:
             Reddit热门数据
@@ -121,9 +118,8 @@ class ExternalAPICrawler:
                 'x-rapidapi-host': "reddapi.p.rapidapi.com"
             }
 
-            # TODO: 需要根据RapidAPI文档更新正确的端点
-            # 目前使用的端点返回404，需要查看API文档
-            endpoint = f"/hot?subreddit={subreddit}&limit={limit}"
+            # 正确的端点：/api/scrape/top
+            endpoint = f"/api/scrape/top?subreddit={subreddit}&limit={limit}"
 
             conn.request("GET", endpoint, headers=headers)
 
@@ -136,24 +132,31 @@ class ExternalAPICrawler:
 
             result = json.loads(data.decode("utf-8"))
 
-            self.logger.info(f"成功获取Reddit数据")
+            # 检查API响应状态
+            if not result.get('success', False):
+                self.logger.error(f"Reddit API返回失败")
+                return None
 
-            # 转换为统一格式（需要根据实际响应调整）
+            self.logger.info(f"成功获取Reddit数据: r/{subreddit}")
+
+            # 转换为统一格式 - 修复数据格式
             trends = []
-            if isinstance(result, dict) and 'data' in result:
-                for idx, item in enumerate(result['data'].get('children', [])[:limit], 1):
-                    post = item.get('data', {})
-                    trends.append({
-                        'id': post.get('id', ''),
-                        'title': post.get('title', ''),
-                        'desc': post.get('selftext', '')[:200] if post.get('selftext') else '',
-                        'author': post.get('author', ''),
-                        'url': f"https://reddit.com{post.get('permalink', '')}",
-                        'hot': post.get('score', 0) + post.get('num_comments', 0),
-                        'score': post.get('score', 0),
-                        'comments': post.get('num_comments', 0),
-                        'timestamp': int(post.get('created_utc', 0) * 1000)
-                    })
+            for post_wrapper in result.get('posts', [])[:limit]:
+                post = post_wrapper.get('data', {})
+                trends.append({
+                    'id': post.get('id', ''),
+                    'title': post.get('title', ''),
+                    'desc': post.get('selftext', '')[:200] if post.get('selftext') else '',
+                    'author': post.get('author', ''),
+                    'subreddit': post.get('subreddit', subreddit),
+                    'url': f"https://reddit.com/r/{post.get('subreddit', subreddit)}/comments/{post.get('id', '')}",
+                    'hot': post.get('ups', 0),
+                    'score': post.get('ups', 0),
+                    'comments': post.get('num_comments', 0),
+                    'upvote_ratio': post.get('upvote_ratio', 0),
+                    'created': post.get('created', 0),
+                    'timestamp': int(post.get('created', 0) * 1000) if post.get('created') else int(datetime.now().timestamp() * 1000)
+                })
 
             return {
                 'platform': 'Reddit',
@@ -256,16 +259,15 @@ class ExternalAPICrawler:
             'platforms': {}
         }
 
-        # Twitter - 唯一正常工作的API
+        # Twitter - 美国热门趋势
         twitter_data = self.fetch_twitter_trends()
         if twitter_data:
             results['platforms']['Twitter'] = twitter_data
 
-        # Reddit - 端点需要修复
-        # 暂时注释掉，需要在RapidAPI控制台查看正确的端点
-        # reddit_data = self.fetch_reddit_hot()
-        # if reddit_data:
-        #     results['platforms']['Reddit'] = reddit_data
+        # Reddit - 全站热门帖子
+        reddit_data = self.fetch_reddit_hot(subreddit='all')
+        if reddit_data:
+            results['platforms']['Reddit'] = reddit_data
 
         # YouTube - 端点需要修复
         # 暂时注释掉，需要在RapidAPI控制台查看正确的端点
