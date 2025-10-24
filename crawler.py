@@ -41,7 +41,7 @@ class HotSearchCrawler:
         "英雄联盟",
         "原神",
         "微信读书",
-        "贴吧",
+        "百度贴吧",
     ]
 
     def __init__(self, data_dir: str = "data", log_dir: str = "logs", use_database: bool = True, use_external_apis: bool = True):
